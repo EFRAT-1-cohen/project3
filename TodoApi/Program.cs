@@ -3,40 +3,51 @@ using TodoApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. הוספת שירותים ל-container
+// הגדרת פורט האזנה עבור Render
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
+// הוספת שירותים ל-container
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// 2. הגדרת ה-DB
-var connectionString = builder.Configuration.GetConnectionString("ToDoDB");
-builder.Services.AddDbContext<ToDoDbContext>(options =>
-    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString))
-);
-
-// 3. הגדרת CORS בצורה נכונה (פעם אחת בלבד!)
+// הוספת שירות CORS כדי שהריאקט יוכל לדבר עם השרת
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
-    {
-        policy.AllowAnyOrigin()  // מאפשר גישה מכל מקום (פותר את הבעיה ב-Render)
-              .AllowAnyMethod()
-              .AllowAnyHeader();
-    });
+    options.AddPolicy("AllowAll",
+        policy =>
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        });
+});
+
+// שליפת מחרוזת החיבור
+var connectionString = builder.Configuration.GetConnectionString("ToDoDB");
+
+// הגדרת ה-DB עם גרסה קבועה (במקום זיהוי אוטומטי שגורם לקריסות)
+builder.Services.AddDbContext<ToDoDbContext>(options =>
+{
+    // אם אין מחרוזת חיבור (למשל שכחנו להגדיר ב-Render), נשתמש במחרוזת ריקה כדי לא לקרוס מיד,
+    // אבל ה-DB לא יעבוד עד שנגדיר את המשתנה ב-Render.
+    var connStr = connectionString ?? "Server=localhost;Database=test;User=root;Password=root;";
+
+    options.UseMySql(connStr, Microsoft.EntityFrameworkCore.ServerVersion.Parse("8.0.30-mysql"));
 });
 
 var app = builder.Build();
 
-// 4. הפעלת ה-CORS (חייב להיות לפני ה-Routes!)
+// הפעלת CORS
 app.UseCors("AllowAll");
 
-// הגדרות Swagger ופיתוח
-// (במקרה שלך כדאי להשאיר את ה-Swagger זמין גם ב-Production לצורך בדיקות אם תרצי)
+// הגדרות Swagger (נשאיר גם בפרודקשן כדי שתוכלי לבדוק שזה עובד)
 app.UseSwagger();
 app.UseSwaggerUI();
 
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection(); // ב-Render לעיתים זה מפריע אם אין תעודה מוגדרת, נשאיר כרגע בהערה או נבטל אם עושה בעיות
 
-// 5. הגדרת ה-Routes
+// הגדרת ה-Routes
 var apiRoutes = app.MapGroup("/api/items");
 
 apiRoutes.MapGet("/", async (ToDoDbContext db) =>
@@ -65,16 +76,12 @@ apiRoutes.MapPut("/{id}", async (int id, Item inputItem, ToDoDbContext db) =>
 
 apiRoutes.MapDelete("/{id}", async (int id, ToDoDbContext db) =>
 {
-    var itemToDelete = await db.Items.FindAsync(id);
-    if (itemToDelete != null)
-    {
-        db.Items.Remove(itemToDelete);
-        await db.SaveChangesAsync();
-        return Results.NoContent();
-    }
-    return Results.NotFound();
-});
+    var item = await db.Items.FindAsync(id);
+    if (item == null) return Results.NotFound();
 
-app.MapGet("/", () => "Welcome to the ToDo API!");
+    db.Items.Remove(item);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
 
 app.Run();
