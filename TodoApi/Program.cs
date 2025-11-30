@@ -1,43 +1,87 @@
 using System;
-using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
-using Pomelo.EntityFrameworkCore.MySql.Scaffolding.Internal;
+using TodoApi;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
-namespace TodoApi;
+var builder = WebApplication.CreateBuilder(args);
 
-public partial class ToDoDbContext : DbContext
+// --- הגדרות פורטים עבור Render ---
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+
+// --- הוספת שירותים ---
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// --- הגדרת CORS (כדי שהריאקט יוכל להתחבר) ---
+builder.Services.AddCors(options =>
 {
-    public ToDoDbContext()
-    {
-    }
-
-    public ToDoDbContext(DbContextOptions<ToDoDbContext> options)
-        : base(options)
-    {
-    }
-
-    public virtual DbSet<Item> Items { get; set; }
-
-    // מחקתי את המתודה OnConfiguring כי היא גורמת לבעיה
-    // ה-Configuration נעשה ב-Program.cs
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        modelBuilder
-            .UseCollation("utf8mb4_0900_ai_ci")
-            .HasCharSet("utf8mb4");
-
-        modelBuilder.Entity<Item>(entity =>
+    options.AddPolicy("AllowAll",
+        policy =>
         {
-            entity.HasKey(e => e.Id).HasName("PRIMARY");
-
-            entity.ToTable("items");
-
-            entity.Property(e => e.Name).HasMaxLength(100);
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
         });
+});
 
-        OnModelCreatingPartial(modelBuilder);
-    }
+// --- חיבור למסד הנתונים ---
+var connectionString = builder.Configuration.GetConnectionString("ToDoDB");
 
-    partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
-}
+builder.Services.AddDbContext<ToDoDbContext>(options =>
+{
+    var connStr = connectionString ?? "Server=localhost;Database=test;User=root;Password=root;";
+    options.UseMySql(connStr, new MySqlServerVersion(new Version(8, 0, 2)));
+});
+
+var app = builder.Build();
+
+// --- קריטי: CORS חייב להיות לפני כל השאר! ---
+app.UseCors("AllowAll");
+
+app.UseSwagger();
+app.UseSwaggerUI();
+
+// --- הגדרת נתיבים (Routes) ---
+var apiRoutes = app.MapGroup("/api/items");
+
+apiRoutes.MapGet("/", async (ToDoDbContext db) =>
+{
+    return Results.Ok(await db.Items.ToListAsync());
+});
+
+apiRoutes.MapPost("/", async (Item item, ToDoDbContext db) =>
+{
+    db.Items.Add(item);
+    await db.SaveChangesAsync();
+    return Results.Created($"/api/items/{item.Id}", item);
+});
+
+apiRoutes.MapPut("/{id}", async (int id, Item inputItem, ToDoDbContext db) =>
+{
+    var itemToUpdate = await db.Items.FindAsync(id);
+    if (itemToUpdate == null) return Results.NotFound();
+
+    itemToUpdate.Name = inputItem.Name;
+    itemToUpdate.IsComplete = inputItem.IsComplete;
+
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+apiRoutes.MapDelete("/{id}", async (int id, ToDoDbContext db) =>
+{
+    var item = await db.Items.FindAsync(id);
+    if (item == null) return Results.NotFound();
+
+    db.Items.Remove(item);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+// הפניה מהשורש ל-Swagger
+app.MapGet("/", () => Results.Redirect("/swagger"));
+
+app.Run();
