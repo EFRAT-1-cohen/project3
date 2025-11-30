@@ -5,7 +5,16 @@ using Microsoft.EntityFrameworkCore;
 using TodoApi;
 
 var builder = WebApplication.CreateBuilder(args);
-
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll",
+        builder =>
+        {
+            builder.WithOrigins("https://project3-lo50.onrender.com") // הכתובת של הריאקט
+                   .AllowAnyMethod()
+                   .AllowAnyHeader();
+        });
+});
 // הוספת שירותים ל-container.
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -47,7 +56,7 @@ builder.Services.AddCors(options =>
 // =====================================
 
 var app = builder.Build();
-
+app.UseCors("AllowAll");
 //if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
