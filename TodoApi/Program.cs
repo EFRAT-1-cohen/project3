@@ -1,17 +1,21 @@
+using System;
 using Microsoft.EntityFrameworkCore;
 using TodoApi;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// הגדרת פורט האזנה עבור Render
+// --- הגדרות פורטים עבור Render ---
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
-// הוספת שירותים ל-container
+// --- הוספת שירותים ---
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// הוספת שירות CORS כדי שהריאקט יוכל לדבר עם השרת
+// --- הגדרת CORS (כדי שהריאקט יוכל להתחבר) ---
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll",
@@ -23,31 +27,27 @@ builder.Services.AddCors(options =>
         });
 });
 
-// שליפת מחרוזת החיבור
+// --- חיבור למסד הנתונים ---
 var connectionString = builder.Configuration.GetConnectionString("ToDoDB");
 
-// הגדרת ה-DB עם גרסה קבועה (במקום זיהוי אוטומטי שגורם לקריסות)
 builder.Services.AddDbContext<ToDoDbContext>(options =>
 {
-    // אם אין מחרוזת חיבור (למשל שכחנו להגדיר ב-Render), נשתמש במחרוזת ריקה כדי לא לקרוס מיד,
-    // אבל ה-DB לא יעבוד עד שנגדיר את המשתנה ב-Render.
+    // משתמשים במחרוזת ברירת מחדל אם לא נמצאה (מונע קריסה מיידית)
     var connStr = connectionString ?? "Server=localhost;Database=test;User=root;Password=root;";
 
-    options.UseMySql(connStr, Microsoft.EntityFrameworkCore.ServerVersion.Parse("8.0.30-mysql"));
+    // תיקון קריטי: שימוש בגרסה קבועה במקום AutoDetect
+    options.UseMySql(connStr, new MySqlServerVersion(new Version(8, 0, 2)));
 });
 
 var app = builder.Build();
 
-// הפעלת CORS
+// --- הפעלת שירותים ---
 app.UseCors("AllowAll");
 
-// הגדרות Swagger (נשאיר גם בפרודקשן כדי שתוכלי לבדוק שזה עובד)
 app.UseSwagger();
 app.UseSwaggerUI();
 
-// app.UseHttpsRedirection(); // ב-Render לעיתים זה מפריע אם אין תעודה מוגדרת, נשאיר כרגע בהערה או נבטל אם עושה בעיות
-
-// הגדרת ה-Routes
+// --- הגדרת נתיבים (Routes) ---
 var apiRoutes = app.MapGroup("/api/items");
 
 apiRoutes.MapGet("/", async (ToDoDbContext db) =>
