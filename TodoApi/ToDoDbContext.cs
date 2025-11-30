@@ -18,8 +18,8 @@ public partial class ToDoDbContext : DbContext
 
     public virtual DbSet<Item> Items { get; set; }
 
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-        => optionsBuilder.UseMySql("name=ToDoDB", Microsoft.EntityFrameworkCore.ServerVersion.Parse("8.0.44-mysql"));
+    // מחקתי את המתודה OnConfiguring כי היא גורמת לבעיה
+    // ה-Configuration נעשה ב-Program.cs
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
