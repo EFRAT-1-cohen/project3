@@ -16,12 +16,16 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 // --- הגדרת CORS (כדי שהריאקט יוכל להתחבר) ---
+// --- הגדרת CORS ---
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll",
         policy =>
         {
-            policy.AllowAnyOrigin()
+            policy.WithOrigins(
+                    "https://project3-lo50.onrender.com",
+                    "http://localhost:3000"
+                )
                   .AllowAnyMethod()
                   .AllowAnyHeader();
         });
