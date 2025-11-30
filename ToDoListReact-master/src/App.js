@@ -19,7 +19,7 @@ function App() {
   }
 
   async function updateCompleted(todo, isComplete) {
-    await setCompleted(todo.id, isComplete);
+    await setCompleted(todo.id, todo, isComplete);
     await getTodos();//refresh tasks list (in order to see the updated one)
   }
 
